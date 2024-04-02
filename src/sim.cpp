@@ -83,6 +83,8 @@ void Sim::registerTypes(ECSRegistry &registry,
     registry.exportColumn<AgentInterface, Done>(ExportID::Done);
     registry.exportSingleton<GlobalDebugPositions>(
         ExportID::GlobalDebugPositions);
+    registry.exportColumn<render::RaycastOutputArchetype, render::RenderOutputBuffer>(
+        (uint32_t)ExportID::Raycast);
 }
 
 static void initEpisodeRNG(Engine &ctx)

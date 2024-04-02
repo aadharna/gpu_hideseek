@@ -58,6 +58,7 @@ enum class ExportID : uint32_t {
     Reward,
     Done,
     GlobalDebugPositions,
+    Raycast,
     NumExports,
 };
 

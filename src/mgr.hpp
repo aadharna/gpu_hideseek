@@ -28,6 +28,7 @@ public:
         uint32_t batchRenderViewHeight = 64;
         madrona::render::APIBackend *extRenderAPI = nullptr;
         madrona::render::GPUDevice *extRenderDev = nullptr;
+        uint32_t raycastOutputResolution = 64;
     };
 
     Manager(const Config &cfg);
@@ -55,6 +56,8 @@ public:
 
     madrona::py::Tensor depthTensor() const;
     madrona::py::Tensor rgbTensor() const;
+
+    madrona::py::Tensor raycastTensor() const;
 
     void triggerReset(madrona::CountT world_idx,
                       madrona::CountT level_idx);

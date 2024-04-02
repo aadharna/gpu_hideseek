@@ -90,6 +90,7 @@ struct Manager::Impl {
     Optional<render::RenderManager> renderMgr;
     WorldReset *resetsPointer;
     Action *actionsPointer;
+    uint32_t raycastOutputResolution;
 
     static inline Impl * make(const Config &cfg);
 
@@ -132,7 +133,8 @@ struct Manager::CUDAImpl : Manager::Impl {
 
 void Manager::CUDAImpl::init()
 {
-    MWCudaLaunchGraph init_graph = mwGPU.buildLaunchGraph(TaskGraphID::Init);
+    MWCudaLaunchGraph init_graph = mwGPU.buildLaunchGraph(TaskGraphID::Init,
+                                                          false);
 
     mwGPU.run(init_graph);
 }
@@ -277,7 +279,7 @@ static void loadPhysicsObjects(PhysicsLoader &loader)
     free(rigid_body_data);
 }
 
-static void loadRenderObjects(render::RenderManager &render_mgr)
+static imp::ImportedAssets loadRenderObjects(render::RenderManager &render_mgr)
 {
     std::array<std::string, (size_t)SimObject::NumObjects> render_asset_paths;
     render_asset_paths[(size_t)SimObject::Sphere] =
@@ -302,7 +304,8 @@ static void loadRenderObjects(render::RenderManager &render_mgr)
 
     std::array<char, 1024> import_err;
     auto render_assets = imp::ImportedAssets::importFromDisk(
-        render_asset_cstrs, Span<char>(import_err.data(), import_err.size()));
+        render_asset_cstrs, Span<char>(import_err.data(), import_err.size()),
+        true, true);
 
     if (!render_assets.has_value()) {
         FATAL("Failed to load render assets: %s", import_err);
@@ -341,6 +344,8 @@ static void loadRenderObjects(render::RenderManager &render_mgr)
     render_mgr.configureLighting({
         { true, math::Vector3{1.0f, 1.0f, -2.0f}, math::Vector3{1.0f, 1.0f, 1.0f} }
     });
+
+    return std::move(*render_assets);
 }
 
 Manager::Impl * Manager::Impl::make(const Config &cfg)
@@ -387,8 +392,18 @@ Manager::Impl * Manager::Impl::make(const Config &cfg)
         Optional<render::RenderManager> render_mgr =
             initRenderManager(cfg, render_gpu_state);
 
+        imp::ImportedAssets::GPUGeometryData gpu_imported_assets;
+
         if (render_mgr.has_value()) {
-            loadRenderObjects(*render_mgr);
+            auto imported_assets = loadRenderObjects(*render_mgr);
+
+            auto gpu_imported_assets_opt =
+                imp::ImportedAssets::makeGPUData(imported_assets);
+
+            assert(gpu_imported_assets_opt.has_value());
+
+            gpu_imported_assets = std::move(*gpu_imported_assets_opt);
+
             app_cfg.renderBridge = render_mgr->bridge();
          } else {
             app_cfg.renderBridge = nullptr;
@@ -406,6 +421,8 @@ Manager::Impl * Manager::Impl::make(const Config &cfg)
             .numWorlds = cfg.numWorlds,
             .numTaskGraphs = (uint32_t)TaskGraphID::NumTaskGraphs,
             .numExportedBuffers = (uint32_t)ExportID::NumExports,
+            .geometryData = &gpu_imported_assets,
+            .raycastOutputResolution = cfg.raycastOutputResolution,
         }, {
             { GPU_HIDESEEK_SRC_LIST },
             { GPU_HIDESEEK_COMPILE_FLAGS },
@@ -413,7 +430,7 @@ Manager::Impl * Manager::Impl::make(const Config &cfg)
         }, cu_ctx);
 
         MWCudaLaunchGraph step_graph = mwgpu_exec.buildLaunchGraph(
-            TaskGraphID::Step);
+            TaskGraphID::Step, true);
 
         WorldReset *world_reset_buffer = 
             (WorldReset *)mwgpu_exec.getExported((uint32_t)ExportID::Reset);
@@ -431,6 +448,7 @@ Manager::Impl * Manager::Impl::make(const Config &cfg)
                 std::move(render_mgr),
                 world_reset_buffer,
                 agent_actions_buffer,
+                cfg.raycastOutputResolution,
             },
             std::move(mwgpu_exec),
             std::move(step_graph),
@@ -486,6 +504,7 @@ Manager::Impl * Manager::Impl::make(const Config &cfg)
                 std::move(render_mgr),
                 world_reset_buffer,
                 agent_actions_buffer,
+                cfg.raycastOutputResolution,
             },
             std::move(cpu_exec),
         };
@@ -750,6 +769,18 @@ Tensor Manager::rgbTensor() const
         impl_->cfg.batchRenderViewWidth,
         4,
     }, impl_->cfg.gpuID);
+}
+
+Tensor Manager::raycastTensor() const
+{
+    uint32_t pixels_per_view = impl_->raycastOutputResolution *
+        impl_->raycastOutputResolution;
+    return impl_->exportStateTensor(ExportID::Raycast,
+                               TensorElementType::UInt8,
+                               {
+                                   impl_->cfg.numWorlds*consts::maxAgents,
+                                   pixels_per_view * 3,
+                               });
 }
 
 void Manager::triggerReset(CountT world_idx, CountT level_idx)

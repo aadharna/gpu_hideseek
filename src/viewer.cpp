@@ -2,9 +2,11 @@
 #include <madrona/render/render_mgr.hpp>
 
 #include "mgr.hpp"
+#include "sim.hpp"
 
 #include <filesystem>
 #include <fstream>
+#include <imgui.h>
 
 using namespace madrona;
 using namespace madrona::viz;
@@ -135,13 +137,17 @@ int main(int argc, char *argv[])
     if (replay_log_path == nullptr) {
         sim_flags |= SimFlags::IgnoreEpisodeLength;
     }
+
+    auto *render_mode = getenv("MADRONA_RENDER_MODE");
     
     bool enable_batch_renderer =
 #ifdef MADRONA_MACOS
         false;
 #else
-        true;
+        render_mode[0] == '1';
 #endif
+
+    uint32_t raycast_output_resolution = 64;
 
     WindowManager wm {};
     WindowHandle window = wm.makeWindow("Hide & Seek", 2730, 1536);
@@ -333,5 +339,61 @@ int main(int argc, char *argv[])
         mgr.step();
 
         printObs();
-    }, []() {});
+    }, [&]() {
+        unsigned char* print_ptr;
+        #ifdef MADRONA_CUDA_SUPPORT
+            int64_t num_bytes = 3 * raycast_output_resolution * raycast_output_resolution;
+            print_ptr = (unsigned char*)cu::allocReadback(num_bytes);
+        #else
+            print_ptr = nullptr;
+        #endif
+
+        char *raycast_tensor = (char *)(mgr.raycastTensor().devicePtr());
+
+        uint32_t bytes_per_image = 3 * raycast_output_resolution * raycast_output_resolution;
+        uint32_t image_idx = viewer.getCurrentWorldID() * GPUHideSeek::consts::maxAgents + 
+            std::max(viewer.getCurrentViewID(), (CountT)0);
+        raycast_tensor += image_idx * bytes_per_image;
+
+        if(exec_mode == ExecMode::CUDA){
+#ifdef MADRONA_CUDA_SUPPORT
+            cudaMemcpy(print_ptr, raycast_tensor,
+                    bytes_per_image,
+                    cudaMemcpyDeviceToHost);
+            raycast_tensor = (char *)print_ptr;
+#endif
+        }
+
+        ImGui::Begin("Raycast");
+
+        auto draw2 = ImGui::GetWindowDrawList();
+        ImVec2 windowPos = ImGui::GetWindowPos();
+        char *raycasters = raycast_tensor;
+
+        int vertOff = 70;
+
+        float pixScale = 3;
+        int extentsX = (int)(pixScale * raycast_output_resolution);
+        int extentsY = (int)(pixScale * raycast_output_resolution);
+
+        for (int i = 0; i < raycast_output_resolution; i++) {
+            for (int j = 0; j < raycast_output_resolution; j++) {
+                uint32_t linear_idx = 3 * (j + i * raycast_output_resolution);
+
+                auto realColor = IM_COL32(
+                        raycasters[linear_idx + 0],
+                        raycasters[linear_idx + 1],
+                        raycasters[linear_idx + 2], 
+                        255);
+
+                draw2->AddRectFilled(
+                    { (i * pixScale) + windowPos.x, 
+                      (j * pixScale) + windowPos.y +vertOff }, 
+                    { ((i + 1) * pixScale) + windowPos.x,   
+                      ((j + 1) * pixScale)+ +windowPos.y+vertOff },
+                    realColor, 0, 0);
+            }
+        }
+        ImGui::End();
+    });
 }
