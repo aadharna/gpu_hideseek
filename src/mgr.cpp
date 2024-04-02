@@ -36,9 +36,11 @@ struct RenderGPUState {
 static inline Optional<RenderGPUState> initRenderGPUState(
     const Manager::Config &mgr_cfg)
 {
+#if !defined(MADRONA_VIEWER)
     if (mgr_cfg.extRenderDev || !mgr_cfg.enableBatchRenderer) {
         return Optional<RenderGPUState>::none();
     }
+#endif
 
     auto render_api_lib = render::APIManager::loadDefaultLib();
     render::APIManager render_api_mgr(render_api_lib.lib());
@@ -55,9 +57,11 @@ static inline Optional<render::RenderManager> initRenderManager(
     const Manager::Config &mgr_cfg,
     const Optional<RenderGPUState> &render_gpu_state)
 {
+#if !defined(MADRONA_VIEWER)
     if (!mgr_cfg.extRenderDev && !mgr_cfg.enableBatchRenderer) {
         return Optional<render::RenderManager>::none();
     }
+#endif
 
     render::APIBackend *render_api;
     render::GPUDevice *render_dev;
@@ -91,6 +95,7 @@ struct Manager::Impl {
     WorldReset *resetsPointer;
     Action *actionsPointer;
     uint32_t raycastOutputResolution;
+    bool enableRaycasting;
 
     static inline Impl * make(const Config &cfg);
 
@@ -430,7 +435,7 @@ Manager::Impl * Manager::Impl::make(const Config &cfg)
         }, cu_ctx);
 
         MWCudaLaunchGraph step_graph = mwgpu_exec.buildLaunchGraph(
-            TaskGraphID::Step, true);
+            TaskGraphID::Step, !cfg.enableBatchRenderer);
 
         WorldReset *world_reset_buffer = 
             (WorldReset *)mwgpu_exec.getExported((uint32_t)ExportID::Reset);
@@ -505,6 +510,7 @@ Manager::Impl * Manager::Impl::make(const Config &cfg)
                 world_reset_buffer,
                 agent_actions_buffer,
                 cfg.raycastOutputResolution,
+                !cfg.enableBatchRenderer
             },
             std::move(cpu_exec),
         };
@@ -589,7 +595,11 @@ void Manager::step()
     } break;
     }
 
+#if defined(MADRONA_VIEWER)
     if (impl_->renderMgr.has_value()) {
+#else
+    if (impl_->cfg.enableBatchRenderer) {
+#endif
         impl_->renderMgr->readECS();
     }
 

@@ -626,6 +626,7 @@ inline void rewardsVisSystem(Engine &ctx,
                              SimEntity sim_e,
                              AgentType agent_type)
 {
+#if 0
     const float cos_angle_threshold = cosf(toRadians(135.f / 2.f));
 
     if (sim_e.e == Entity::none() || agent_type != AgentType::Seeker) {
@@ -663,6 +664,7 @@ inline void rewardsVisSystem(Engine &ctx,
             break;
         }
     }
+#endif
 }
 
 inline void outputRewardsDonesSystem(Engine &ctx,

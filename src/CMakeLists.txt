@@ -73,6 +73,10 @@ if (TARGET madrona_viz)
         -DDATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../data/"
     )
 
+    target_compile_definitions(viewer PRIVATE
+        -DMADRONA_VIEWER
+    )
+
     if (TARGET madrona_cuda)
         target_link_libraries(viewer PRIVATE madrona_cuda)
     endif()
@@ -80,4 +84,3 @@ endif()
 
 add_executable(headless headless.cpp)
 target_link_libraries(headless madrona_mw_core gpu_hideseek_mgr)
-

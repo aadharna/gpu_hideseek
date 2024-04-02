@@ -41,6 +41,15 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    auto *render_mode = getenv("MADRONA_RENDER_MODE");
+
+    bool enable_batch_renderer =
+#ifdef MADRONA_MACOS
+        false;
+#else
+        render_mode[0] == '1';
+#endif
+
     uint64_t num_worlds = std::stoul(argv[2]);
     uint64_t num_steps = std::stoul(argv[3]);
 
@@ -54,6 +63,20 @@ int main(int argc, char *argv[])
         }
     }
 
+    auto *resolution_str = getenv("MADRONA_RENDER_RESOLUTION");
+
+    uint32_t raycast_output_resolution = 32;
+
+    if (resolution_str[0] == '0') {
+        raycast_output_resolution *= 1;
+    } else if (resolution_str[0] == '1') {
+        raycast_output_resolution *= 2;
+    } else if (resolution_str[0] == '2') {
+        raycast_output_resolution *= 4;
+    } else if (resolution_str[0] == '3') {
+        raycast_output_resolution *= 8;
+    }
+
     Manager mgr({
         .execMode = exec_mode,
         .gpuID = 0,
@@ -64,7 +87,10 @@ int main(int argc, char *argv[])
         .maxHiders = 3,
         .minSeekers = 2,
         .maxSeekers = 2,
-        .enableBatchRenderer = false,
+        .enableBatchRenderer = enable_batch_renderer,
+        .batchRenderViewWidth = raycast_output_resolution,
+        .batchRenderViewHeight = raycast_output_resolution,
+        .raycastOutputResolution = raycast_output_resolution
     });
 
     std::random_device rd;
