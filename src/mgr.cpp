@@ -284,7 +284,8 @@ static void loadPhysicsObjects(PhysicsLoader &loader)
     free(rigid_body_data);
 }
 
-static imp::ImportedAssets loadRenderObjects(render::RenderManager &render_mgr)
+static imp::ImportedAssets loadRenderObjects(
+        Optional<render::RenderManager> &render_mgr)
 {
     std::array<std::string, (size_t)SimObject::NumObjects> render_asset_paths;
     render_asset_paths[(size_t)SimObject::Sphere] =
@@ -337,18 +338,20 @@ static imp::ImportedAssets loadRenderObjects(render::RenderManager &render_mgr)
     render_assets->objects[5].meshes[0].materialIDX = 4;
     render_assets->objects[6].meshes[0].materialIDX = 5;
 
-    render_mgr.loadObjects(render_assets->objects, materials, {
-        { (std::filesystem::path(DATA_DIR) /
-           "green_grid.png").string().c_str() },
-        { (std::filesystem::path(DATA_DIR) /
-           "smile.png").string().c_str() },
-        { (std::filesystem::path(DATA_DIR) /
-           "smile.png").string().c_str() },
-    });
+    if (render_mgr.has_value()) {
+        render_mgr->loadObjects(render_assets->objects, materials, {
+            { (std::filesystem::path(DATA_DIR) /
+               "green_grid.png").string().c_str() },
+            { (std::filesystem::path(DATA_DIR) /
+               "smile.png").string().c_str() },
+            { (std::filesystem::path(DATA_DIR) /
+               "smile.png").string().c_str() },
+        });
 
-    render_mgr.configureLighting({
-        { true, math::Vector3{1.0f, 1.0f, -2.0f}, math::Vector3{1.0f, 1.0f, 1.0f} }
-    });
+        render_mgr->configureLighting({
+            { true, math::Vector3{1.0f, 1.0f, -2.0f}, math::Vector3{1.0f, 1.0f, 1.0f} }
+        });
+    }
 
     return std::move(*render_assets);
 }
@@ -399,20 +402,20 @@ Manager::Impl * Manager::Impl::make(const Config &cfg)
 
         imp::ImportedAssets::GPUGeometryData gpu_imported_assets;
 
+        auto imported_assets = loadRenderObjects(render_mgr);
+
+        auto gpu_imported_assets_opt =
+            imp::ImportedAssets::makeGPUData(imported_assets);
+
+        assert(gpu_imported_assets_opt.has_value());
+
+        gpu_imported_assets = std::move(*gpu_imported_assets_opt);
+
         if (render_mgr.has_value()) {
-            auto imported_assets = loadRenderObjects(*render_mgr);
-
-            auto gpu_imported_assets_opt =
-                imp::ImportedAssets::makeGPUData(imported_assets);
-
-            assert(gpu_imported_assets_opt.has_value());
-
-            gpu_imported_assets = std::move(*gpu_imported_assets_opt);
-
             app_cfg.renderBridge = render_mgr->bridge();
-         } else {
+        } else {
             app_cfg.renderBridge = nullptr;
-         }
+        }
 
         HeapArray<WorldInit> world_inits(cfg.numWorlds);
 
@@ -476,7 +479,7 @@ Manager::Impl * Manager::Impl::make(const Config &cfg)
             initRenderManager(cfg, render_gpu_state);
 
         if (render_mgr.has_value()) {
-            loadRenderObjects(*render_mgr);
+            loadRenderObjects(render_mgr);
             app_cfg.renderBridge = render_mgr->bridge();
          } else {
             app_cfg.renderBridge = nullptr;
@@ -573,7 +576,11 @@ void Manager::init()
     } break;
     }
 
+#if defined(MADRONA_VIEWER)
     if (impl_->renderMgr.has_value()) {
+#else
+    if (impl_->cfg.enableBatchRenderer) {
+#endif
         impl_->renderMgr->readECS();
     }
 

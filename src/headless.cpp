@@ -93,6 +93,8 @@ int main(int argc, char *argv[])
         .raycastOutputResolution = raycast_output_resolution
     });
 
+    mgr.init();
+
     std::random_device rd;
     std::mt19937 rand_gen(rd());
     std::uniform_int_distribution<int32_t> act_rand(0, 4);

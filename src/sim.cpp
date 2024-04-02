@@ -894,7 +894,7 @@ static void observationsTasks(const Config &cfg,
             GlobalDebugPositions
         >>(deps);
 
-    if (cfg.renderBridge) {
+    /* if (cfg.renderBridge) */ {
         auto update_camera = builder.addToGraph<ParallelForNode<Engine,
             updateCameraSystem,
                 Position,
@@ -958,7 +958,8 @@ Sim::Sim(Engine &ctx,
          numPhysicsSubsteps, -9.8 * math::up, max_total_entities,
          physicsSolverSelector);
 
-    enableRender = cfg.renderBridge != nullptr;
+    // enableRender = cfg.renderBridge != nullptr;
+    enableRender = true;
 
     if (enableRender) {
         RenderingSystem::init(ctx, cfg.renderBridge);
@@ -995,6 +996,7 @@ Sim::Sim(Engine &ctx,
             ctx.makeEntity<AgentInterface>();
 
         if (enableRender) {
+            printf("Attaching view to entity\n");
             render::RenderingSystem::attachEntityToView(ctx,
                     agent_iface,
                     100.f, 0.001f,
