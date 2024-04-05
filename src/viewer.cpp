@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
     }
 
     WindowManager wm {};
-    WindowHandle window = wm.makeWindow("Hide & Seek", 2730, 1536);
+    WindowHandle window = wm.makeWindow("Hide & Seek", 2730/2, 1536/2);
     render::GPUHandle render_gpu = wm.initGPU(0, { window.get() });
 
     Manager mgr({

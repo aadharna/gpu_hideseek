@@ -20,6 +20,8 @@
 #include <madrona/cuda_utils.hpp>
 #endif
 
+#define MADRONA_VIEWER
+
 using namespace madrona;
 using namespace madrona::math;
 using namespace madrona::phys;
@@ -36,7 +38,7 @@ struct RenderGPUState {
 static inline Optional<RenderGPUState> initRenderGPUState(
     const Manager::Config &mgr_cfg)
 {
-#if !defined(MADRONA_VIEWER)
+#if defined(MADRONA_VIEWER)
     if (mgr_cfg.extRenderDev || !mgr_cfg.enableBatchRenderer) {
         return Optional<RenderGPUState>::none();
     }
@@ -57,7 +59,7 @@ static inline Optional<render::RenderManager> initRenderManager(
     const Manager::Config &mgr_cfg,
     const Optional<RenderGPUState> &render_gpu_state)
 {
-#if !defined(MADRONA_VIEWER)
+#if defined(MADRONA_VIEWER)
     if (!mgr_cfg.extRenderDev && !mgr_cfg.enableBatchRenderer) {
         return Optional<render::RenderManager>::none();
     }
