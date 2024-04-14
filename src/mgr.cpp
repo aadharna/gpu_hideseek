@@ -109,10 +109,14 @@ struct Manager::CPUImpl : Manager::Impl {
 
     inline void init();
     inline void step();
+    inline void simulate();
+    inline void resetandupdate();
 
 #ifdef MADRONA_CUDA_SUPPORT
     inline void gpuStreamInit(cudaStream_t strm, void **buffers, Manager &mgr);
     inline void gpuStreamStep(cudaStream_t strm, void **buffers, Manager &mgr);
+    inline void gpuStreamSimulate(cudaStream_t strm, void **buffers, Manager& mgr);
+    inline void gpuStreamResetAndUpdate(cudaStream_t strm, void **buffers, Manager& mgr);
 #endif
 };
 
@@ -123,7 +127,19 @@ void Manager::CPUImpl::init()
 
 void Manager::CPUImpl::step()
 {
-    cpuExec.runTaskGraph(TaskGraphID::Step);
+    //cpuExec.runTaskGraph(TaskGraphID::Step);
+    cpuExec.runTaskGraph(TaskGraphID::Simulate);
+    cpuExec.runTaskGraph(TaskGraphID::ResetAndUpdate);
+}
+
+void Manager::CPUImpl::simulate()
+{
+	cpuExec.runTaskGraph(TaskGraphID::Simulate);
+}
+
+void Manager::CPUImpl::resetandupdate()
+{
+	cpuExec.runTaskGraph(TaskGraphID::ResetAndUpdate);
 }
 
 #ifdef MADRONA_CUDA_SUPPORT
@@ -135,6 +151,14 @@ void Manager::CPUImpl::gpuStreamInit(cudaStream_t, void **, Manager &)
 void Manager::CPUImpl::gpuStreamStep(cudaStream_t, void **, Manager &)
 {
     assert(false);
+}
+void Manager::CPUImpl::gpuStreamSimulate(cudaStream_t, void **, Manager &)
+{
+	assert(false);
+}
+void Manager::CPUImpl::gpuStreamResetAndUpdate(cudaStream_t, void **, Manager &)
+{
+	assert(false);
 }
 #endif
 
@@ -154,9 +178,13 @@ static inline uint64_t numTensorBytes(const Tensor &t)
 struct Manager::CUDAImpl : Manager::Impl {
     MWCudaExecutor mwGPU;
     MWCudaLaunchGraph stepGraph;
+    MWCudaLaunchGraph simulationGraph;
+    MWCudaLaunchGraph resetandupdateGraph;
 
     inline void init();
     inline void step();
+    inline void simulate();
+    inline void resetandupdate();
 
     inline void copyFromSim(cudaStream_t strm, void *dst, const Tensor &src);
     inline void copyToSim(cudaStream_t strm, const Tensor &dst, void *src);
@@ -165,6 +193,8 @@ struct Manager::CUDAImpl : Manager::Impl {
 
     inline void gpuStreamInit(cudaStream_t strm, void **buffers, Manager &mgr);
     inline void gpuStreamStep(cudaStream_t strm, void **buffers, Manager &mgr);
+    inline void gpuStreamSimulate(cudaStream_t strm, void **buffers, Manager& mgr);
+    inline void gpuStreamResetAndUpdate(cudaStream_t strm, void **buffers, Manager& mrg);
 };
 
 void Manager::CUDAImpl::init()
@@ -176,7 +206,20 @@ void Manager::CUDAImpl::init()
 
 void Manager::CUDAImpl::step()
 {
-    mwGPU.run(stepGraph);
+    // mwGPU.run(stepGraph);
+    mwGPU.run(simulationGraph);
+    mwGPU.run(resetandupdateGraph);
+}
+
+void Manager::CUDAImpl::resetandupdate()
+{
+    mwGPU.run(resetandupdateGraph);
+}
+
+
+void Manager::CUDAImpl::simulate()
+{
+    mwGPU.run(simulationGraph);
 }
 
 void Manager::CUDAImpl::copyFromSim(
@@ -239,7 +282,51 @@ void Manager::CUDAImpl::gpuStreamStep(
         //copyToSim(strm, mgr.rewardHyperParamsTensor(), *buffers++);
     }
 
-    mwGPU.runAsync(stepGraph, strm);
+    // mwGPU.runAsync(stepGraph, strm);
+    mwGPU.runAsync(simulationGraph, strm);
+    mwGPU.runAsync(resetandupdateGraph, strm);
+
+    buffers = copyOutObservations(strm, buffers, mgr);
+
+    copyFromSim(strm, *buffers++, mgr.rewardTensor());
+    copyFromSim(strm, *buffers++, mgr.doneTensor());
+    copyFromSim(strm, *buffers++, mgr.episodeResultTensor());
+}
+
+void Manager::CUDAImpl::gpuStreamSimulate(
+    cudaStream_t strm, void** buffers, Manager& mgr)
+{
+    copyToSim(strm, mgr.actionTensor(), *buffers++);
+    copyToSim(strm, mgr.resetTensor(), *buffers++);
+
+    if (cfg.numPBTPolicies > 0) {
+        copyToSim(strm, mgr.policyAssignmentsTensor(), *buffers++);
+        //copyToSim(strm, mgr.rewardHyperParamsTensor(), *buffers++);
+    }
+
+    // MWCudaLaunchGraph stepGraph = mwGPU.buildLaunchGraph(TaskGraphID::PreStep);
+
+    mwGPU.runAsync(simulationGraph, strm);
+
+    buffers = copyOutObservations(strm, buffers, mgr);
+
+    copyFromSim(strm, *buffers++, mgr.rewardTensor());
+    copyFromSim(strm, *buffers++, mgr.doneTensor());
+    // copyFromSim(strm, *buffers++, mgr.episodeResultTensor());
+}
+
+void Manager::CUDAImpl::gpuStreamResetAndUpdate(
+    cudaStream_t strm, void** buffers, Manager& mgr)
+{
+    // copyToSim(strm, mgr.actionTensor(), *buffers++);
+    // copyToSim(strm, mgr.resetTensor(), *buffers++);
+
+    if (cfg.numPBTPolicies > 0) {
+        copyToSim(strm, mgr.policyAssignmentsTensor(), *buffers++);
+        //copyToSim(strm, mgr.rewardHyperParamsTensor(), *buffers++);
+    }
+    
+    mwGPU.runAsync(resetandupdateGraph, strm);
 
     buffers = copyOutObservations(strm, buffers, mgr);
 
@@ -521,6 +608,12 @@ Manager::Impl * Manager::Impl::make(const Config &cfg)
         MWCudaLaunchGraph step_graph = mwgpu_exec.buildLaunchGraph(
             TaskGraphID::Step);
 
+        MWCudaLaunchGraph simulation_graph = mwgpu_exec.buildLaunchGraph(
+            TaskGraphID::Simulate);
+
+        MWCudaLaunchGraph reset_and_update_graph = mwgpu_exec.buildLaunchGraph(
+            TaskGraphID::ResetAndUpdate);
+
         WorldReset *world_reset_buffer = 
             (WorldReset *)mwgpu_exec.getExported((uint32_t)ExportID::Reset);
 
@@ -540,6 +633,8 @@ Manager::Impl * Manager::Impl::make(const Config &cfg)
             },
             std::move(mwgpu_exec),
             std::move(step_graph),
+            std::move(simulation_graph),
+            std::move(reset_and_update_graph),
         };
 #else
         FATAL("Madrona was not compiled with CUDA support");
@@ -677,6 +772,50 @@ void Manager::step()
     }
 
     if (impl_->renderMgr.has_value()) {
+       impl_->renderMgr->readECS();
+    }
+
+    if (impl_->cfg.enableBatchRenderer) {
+        impl_->renderMgr->batchRender();
+    }
+}
+
+void Manager::simulate()
+{
+    switch (impl_->cfg.execMode) {
+    case ExecMode::CUDA: {
+#ifdef MADRONA_CUDA_SUPPORT
+        static_cast<CUDAImpl*>(impl_)->simulate();
+#endif
+    } break;
+    case ExecMode::CPU: {
+        static_cast<CPUImpl*>(impl_)->simulate();
+    } break;
+    }
+
+    if (impl_->renderMgr.has_value()) {
+        impl_->renderMgr->readECS();
+    }
+
+    if (impl_->cfg.enableBatchRenderer) {
+        impl_->renderMgr->batchRender();
+    }
+}
+
+void Manager::resetandupdate()
+{
+    switch (impl_->cfg.execMode) {
+    case ExecMode::CUDA: {
+#ifdef MADRONA_CUDA_SUPPORT
+        static_cast<CUDAImpl*>(impl_)->resetandupdate();
+#endif
+    } break;
+    case ExecMode::CPU: {
+        static_cast<CPUImpl*>(impl_)->resetandupdate();
+    } break;
+    }
+
+    if (impl_->renderMgr.has_value()) {
         impl_->renderMgr->readECS();
     }
 
@@ -717,6 +856,42 @@ void Manager::gpuStreamStep(cudaStream_t strm, void **buffers)
     } break;
     }
     
+    if (impl_->renderMgr.has_value()) {
+        assert(false);
+    }
+}
+
+void Manager::gpuStreamSimulate(cudaStream_t strm, void** buffers)
+{
+    switch (impl_->cfg.execMode) {
+    case ExecMode::CUDA: {
+#ifdef MADRONA_CUDA_SUPPORT
+        static_cast<CUDAImpl*>(impl_)->gpuStreamSimulate(strm, buffers, *this);
+#endif
+    } break;
+    case ExecMode::CPU: {
+        static_cast<CPUImpl*>(impl_)->gpuStreamSimulate(strm, buffers, *this);
+    } break;
+    }
+
+    if (impl_->renderMgr.has_value()) {
+        assert(false);
+    }
+}
+
+void Manager::gpuStreamResetAndUpdate(cudaStream_t strm, void** buffers)
+{
+    switch (impl_->cfg.execMode) {
+    case ExecMode::CUDA: {
+#ifdef MADRONA_CUDA_SUPPORT
+        static_cast<CUDAImpl*>(impl_)->gpuStreamResetAndUpdate(strm, buffers, *this);
+#endif
+    } break;
+    case ExecMode::CPU: {
+        static_cast<CPUImpl*>(impl_)->gpuStreamResetAndUpdate(strm, buffers, *this);
+    } break;
+    }
+
     if (impl_->renderMgr.has_value()) {
         assert(false);
     }

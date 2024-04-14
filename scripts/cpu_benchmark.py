@@ -8,10 +8,10 @@ torch.manual_seed(0)
 import random
 random.seed(0)
 
-num_worlds = int(sys.argv[1])
-num_steps = int(sys.argv[2])
-entities_per_world = int(sys.argv[3])
-reset_chance = float(sys.argv[4])
+num_worlds = 5
+num_steps = 500
+entities_per_world = 0
+reset_chance = 0.0
 
 render_width = 64
 render_height = 64
@@ -20,31 +20,34 @@ gpu_id = 0
 
 sim = gpu_hideseek.HideAndSeekSimulator(
         exec_mode = gpu_hideseek.madrona.ExecMode.CPU,
-        gpu_id = gpu_id,
+        gpu_id = 0,
         num_worlds = num_worlds,
-        render_width = render_width,
-        render_height = render_height,
-        debug_compile = False,
-        auto_reset = True,
+        sim_flags = gpu_hideseek.SimFlags.Default,
+        rand_seed = 10,
+        min_hiders = 2,
+        max_hiders = 2,
+        min_seekers = 3,
+        max_seekers = 3,
+        num_pbt_policies = 0,
 )
 sim.init()
 
 #rgb_observations = sim.rgb_tensor().to_torch()
 
-def dump_rgb(dump_dir, step_idx):
-    N = rgb_observations.shape[0]
-    A = rgb_observations.shape[1]
+# def dump_rgb(dump_dir, step_idx):
+#     N = rgb_observations.shape[0]
+#     A = rgb_observations.shape[1]
 
-    num_wide = min(64, N * A)
+#     num_wide = min(64, N * A)
 
-    reshaped = rgb_observations.reshape(N * A // num_wide, num_wide, *rgb_observations.shape[2:])
-    grid = reshaped.permute(0, 2, 1, 3, 4)
+#     reshaped = rgb_observations.reshape(N * A // num_wide, num_wide, *rgb_observations.shape[2:])
+#     grid = reshaped.permute(0, 2, 1, 3, 4)
 
-    grid = grid.reshape(N * A // num_wide * render_height, num_wide * render_width, 4)
-    grid = grid.type(torch.uint8).cpu().numpy()
+#     grid = grid.reshape(N * A // num_wide * render_height, num_wide * render_width, 4)
+#     grid = grid.type(torch.uint8).cpu().numpy()
 
-    img = PIL.Image.fromarray(grid)
-    img.save(f"{dump_dir}/{step_idx}.png", format="PNG")
+#     img = PIL.Image.fromarray(grid)
+#     img.save(f"{dump_dir}/{step_idx}.png", format="PNG")
 
 
 actions = sim.action_tensor().to_torch()
@@ -128,8 +131,8 @@ for i in range(num_steps):
     if is_cuda:
         torch.cuda.synchronize()
 
-    if len(sys.argv) > 5:
-        dump_rgb(sys.argv[5], i)
+    # if len(sys.argv) > 5:
+    #     dump_rgb(sys.argv[5], i)
 
 end = time.time()
 

@@ -36,10 +36,14 @@ public:
 
     void init();
     void step();
+    void simulate();
+    void resetandupdate();
 
 #ifdef MADRONA_CUDA_SUPPORT
     void gpuStreamInit(cudaStream_t strm, void **buffers);
     void gpuStreamStep(cudaStream_t strm, void **buffers);
+    void gpuStreamSimulate(cudaStream_t strm, void** buffers);
+    void gpuStreamResetAndUpdate(cudaStream_t strm, void** buffers);
 #endif
 
     madrona::py::Tensor resetTensor() const;
