@@ -8,10 +8,11 @@ torch.manual_seed(0)
 import random
 random.seed(0)
 
-num_worlds = int(sys.argv[1])
-num_steps = int(sys.argv[2])
-entities_per_world = int(sys.argv[3])
-reset_chance = float(sys.argv[4])
+num_worlds = 16000
+num_steps = 1920
+entities_per_world = 0
+reset_chance = 0.
+
 
 sim = gpu_hideseek.HideAndSeekSimulator(
         exec_mode = gpu_hideseek.madrona.ExecMode.CUDA,
@@ -23,6 +24,7 @@ sim = gpu_hideseek.HideAndSeekSimulator(
         max_hiders = 3,
         min_seekers = 2,
         max_seekers = 2,
+        num_pbt_policies = 0,
 )
 sim.init()
 
@@ -62,7 +64,9 @@ for i in range(5):
 start = time.time()
 
 for i in range(num_steps):
-    sim.step()
+    # sim.step()
+    sim.simulate()
+    sim.resetandupdate()
 
     #torch.rand(reset_rand.shape, out=reset_rand)
 

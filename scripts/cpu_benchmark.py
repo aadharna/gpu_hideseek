@@ -8,10 +8,10 @@ torch.manual_seed(0)
 import random
 random.seed(0)
 
-num_worlds = int(sys.argv[1])
-num_steps = int(sys.argv[2])
-entities_per_world = int(sys.argv[3])
-reset_chance = float(sys.argv[4])
+num_worlds = 2000
+num_steps = 1920
+entities_per_world = 0
+reset_chance = 0.0
 
 render_width = 64
 render_height = 64
@@ -20,7 +20,7 @@ gpu_id = 0
 
 sim = gpu_hideseek.HideAndSeekSimulator(
         exec_mode = gpu_hideseek.madrona.ExecMode.CPU,
-        gpu_id = gpu_id,
+        gpu_id = 0,
         num_worlds = num_worlds,
         sim_flags = gpu_hideseek.SimFlags.Default,
         rand_seed = 10,
@@ -111,7 +111,9 @@ for i in range(5):
 start = time.time()
 
 for i in range(num_steps):
-    sim.step()
+    # sim.step()
+    sim.simulate()
+    sim.resetandupdate()
 
     if has_gpu:
         for obs_cpu, obs_gpu in zip(observations_cpu, observations_gpu):
