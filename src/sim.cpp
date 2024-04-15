@@ -941,6 +941,8 @@ static void setupSimulateTasks(TaskGraphBuilder& builder, const Config& cfg)
 {
 	auto sim_done = processActionsAndPhysicsTasks(builder);
 	auto rewards_and_dones = rewardsAndDonesTasks(builder, {sim_done});
+    // get data for observations (PRE RESET) for reward calculation!
+    observationsTasks(cfg, builder, {rewards_and_dones});
 }
 
 static void setupResetAndUpdateTasks(TaskGraphBuilder& builder, const Config& cfg)
