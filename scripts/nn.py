@@ -344,7 +344,7 @@ if __name__ == '__main__':
     import random
     random.seed(0)
 
-    from wrapper import MadronaHideAndSeekWrapperv2
+    from wrapper import MadronaHideAndSeekWrapper
     import numpy as np
 
     num_worlds = 25
@@ -365,10 +365,11 @@ if __name__ == '__main__':
                         max_hiders = 3,
                         min_seekers = 2,
                         max_seekers = 2,
+                        num_pbt_policies = 0,
         )
     sim.init()
 
-    env = MadronaHideAndSeekWrapperv2(sim)
+    env = MadronaHideAndSeekWrapper(sim)
     obs, _ = env.reset()
     num_obs_features = env.num_obs_features
     num_entity_features = env.num_ent_features

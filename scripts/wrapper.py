@@ -123,7 +123,7 @@ from gym.spaces import Dict, Box, MultiDiscrete
 #         return obs, reward, done, done, info
     
 
-class MadronaHideAndSeekWrapperv2: #gym.Wrapper):
+class MadronaHideAndSeekWrapper: #gym.Wrapper):
     def __init__(self, sim, nSeekers=3, nHiders=2):
         # super(MadronaHideAndSeekWrapper, self).__init__(sim)
         self.sim = sim
@@ -253,9 +253,10 @@ class MadronaHideAndSeekWrapperv2: #gym.Wrapper):
         return obs
     
     def reset(self, **kwargs):
-        # Reset the simulator is done inside the sim.step function
-        # self.sim.reset(**kwargs)
-
+        # Reset the simulator is usually done inside the sim.step function
+        # however, with the split task graph, we can manually reset it as well.
+        self.sim.resetandupdate() # reset ALL of the batched worlds
+        
         # Collect observations and return as a dictionary
         obs = self.get_obs()
         return obs, {}
@@ -280,12 +281,15 @@ class MadronaHideAndSeekWrapperv2: #gym.Wrapper):
         action_tensor[..., 2] = turn - 5
         action_tensor[..., 3] = grab
         action_tensor[..., 4] = lock
+        
+        # copy the action tensor to the simulator
+        self.sim.action_tensor().copy_(action_tensor)
 
         # Apply the modified action tensor to the simulator
         # self.sim.setAction(action_tensor)
-        # self.sim.step()
-        self.sim.prestep()
-        self.sim.poststep()
+        self.sim.step()
+        # self.sim.prestep()
+        # self.sim.poststep()
 
         # Collect observations, rewards, dones, and info
         obs = self.get_obs()
@@ -294,6 +298,76 @@ class MadronaHideAndSeekWrapperv2: #gym.Wrapper):
         info = {}  # Add any additional info if needed
 
         return obs, reward, done, done, info
+    
+    def __del__(self):
+        del self.sim
+    
+class MadronaHideAndSeekWrapperSplitTaskGraph(MadronaHideAndSeekWrapper):
+    def __init__(self, sim, nSeekers=3, nHiders=2):
+        super().__init__(sim, nSeekers, nHiders)
+        
+        # intial reward function uses the c++ hide and seek calculated reward
+        def reward_fn(agent_data, relative_box_obs, relative_ramp_obs, visible_agents_mask, 
+                      visible_boxes_mask, visible_ramps_mask, lidar, prep_counter, agent_type_mask, id_tensor):
+                        
+            return self.sim.reward_tensor().to_torch()
+        
+        initial_rf = reward_fn
+
+        self.rfs = [initial_rf]
+        self.sampled_reward_fn_id = 0
+
+    def step(self, action_dict):
+        # Extract actions from the dictionary
+        move_amount = action_dict["move_amount"]
+        move_angle = action_dict["move_angle"]
+        turn = action_dict["turn"]
+        grab = action_dict["grab"]
+        lock = action_dict["lock"]
+
+        # Get the action tensor from the simulator
+        action_tensor = self.sim.action_tensor().to_torch()
+
+        # Fill in the action tensor with the extracted actions
+        # move amount, angle and turn are all in [-5, 5] and 
+        #  the logits are in [0, 10] so we need to center those properly
+        action_tensor[..., 0] = move_amount - 5
+        action_tensor[..., 1] = move_angle - 5
+        action_tensor[..., 2] = turn - 5
+        action_tensor[..., 3] = grab
+        action_tensor[..., 4] = lock
+        
+        # copy the action tensor to the simulator
+        self.sim.action_tensor().copy_(action_tensor)
+
+        # Apply the modified action tensor to the sim
+        self.sim.simulate()
+        
+        # get the state of the environment post action 
+        # (env is updated at the end of simulate, but envs are not reset yet)
+        obs = self.get_obs()
+        
+        # calculate the reward using state + action
+        reward = self.dynamic_reward_fn(**obs)
+        
+        # update the environment if finished and collect next states
+        self.sim.resetandupdate()
+
+        # Collect observations, rewards, dones, and info
+        obs = self.get_obs()
+        done = self.sim.done_tensor().to_torch()
+        info = {}
+        
+        return obs, reward, done, done, info
+
+    def set_reward_function(self, reward_fn_string, sample=False):
+        # parse the generated reward function into a callable 
+        # make sure that the function signature matches what we expect:
+        # def reward_fn(agent_data, relative_box_obs, relative_ramp_obs, visible_agents_mask, 
+        #               visible_boxes_mask, visible_ramps_mask, lidar, prep_counter, agent_type_mask, id_tensor): -> reward
+        self.rfs.append(reward_fn_string)
+        function = eval(reward_fn_string, globals(), locals())
+        self.dynamic_reward_fn = function
 
 
 if __name__ == '__main__':
@@ -324,10 +398,11 @@ if __name__ == '__main__':
 			max_hiders = 2,
 			min_seekers = 3,
 			max_seekers = 3,
+            num_pbt_policies = 0,
 	)
     sim.init()
 
-    env = MadronaHideAndSeekWrapperv2(sim)
+    env = MadronaHideAndSeekWrapper(sim)
     print(env.observation_space)
     obs = env.reset()
     action = {'move_amount': 1, 'move_angle': 8, 'turn': 7, 'grab': 0, 'lock': 0}
@@ -335,4 +410,4 @@ if __name__ == '__main__':
 
     print(ns.keys())
 
-    del sim
+    del env
