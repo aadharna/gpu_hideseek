@@ -937,24 +937,23 @@ static void setupStepTasks(TaskGraphBuilder &builder, const Config &cfg)
     observationsTasks(cfg, builder, {resets});
 }
 
-static TaskGraphNodeID setupPreStepTasks(TaskGraphBuilder& builder, const Config& cfg)
+static void setupSimulateTasks(TaskGraphBuilder& builder, const Config& cfg)
 {
 	auto sim_done = processActionsAndPhysicsTasks(builder);
 	auto rewards_and_dones = rewardsAndDonesTasks(builder, {sim_done});
-    return rewards_and_dones;
 }
 
-static void setupPostStepTasks(TaskGraphBuilder& builder, const Config& cfg, const TaskGraphNodeID& rewards_and_dones)
+static void setupResetAndUpdateTasks(TaskGraphBuilder& builder, const Config& cfg)
 {
-	auto resets = resetTasks(builder, {rewards_and_dones});
+	auto resets = resetTasks(builder, {});
 	observationsTasks(cfg, builder, {resets});
 }
 
 void Sim::setupTasks(TaskGraphManager &taskgraph_mgr, const Config &cfg)
 {
     setupInitTasks(taskgraph_mgr.init(TaskGraphID::Init), cfg);
-    TaskGraphNodeID rewards_and_dones = setupPreStepTasks(taskgraph_mgr.init(TaskGraphID::Simulate), cfg);
-    setupPostStepTasks(taskgraph_mgr.init(TaskGraphID::ResetAndUpdate), cfg, rewards_and_dones);
+    setupSimulateTasks(taskgraph_mgr.init(TaskGraphID::Simulate), cfg);
+    setupResetAndUpdateTasks(taskgraph_mgr.init(TaskGraphID::ResetAndUpdate), cfg);
 }
 
 Sim::Sim(Engine &ctx,

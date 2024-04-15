@@ -67,7 +67,7 @@ enum class TaskGraphID : uint32_t {
     Init,
     Simulate,
     ResetAndUpdate,
-    Step,
+    // Step,
     NumTaskGraphs,
 };
 

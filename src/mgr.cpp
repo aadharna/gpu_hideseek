@@ -177,7 +177,7 @@ static inline uint64_t numTensorBytes(const Tensor &t)
 
 struct Manager::CUDAImpl : Manager::Impl {
     MWCudaExecutor mwGPU;
-    MWCudaLaunchGraph stepGraph;
+    // MWCudaLaunchGraph stepGraph;
     MWCudaLaunchGraph simulationGraph;
     MWCudaLaunchGraph resetandupdateGraph;
 
@@ -605,8 +605,8 @@ Manager::Impl * Manager::Impl::make(const Config &cfg)
             CompileConfig::OptMode::LTO,
         }, cu_ctx);
 
-        MWCudaLaunchGraph step_graph = mwgpu_exec.buildLaunchGraph(
-            TaskGraphID::Step);
+        // MWCudaLaunchGraph step_graph = mwgpu_exec.buildLaunchGraph(
+        //     TaskGraphID::Step);
 
         MWCudaLaunchGraph simulation_graph = mwgpu_exec.buildLaunchGraph(
             TaskGraphID::Simulate);
@@ -632,7 +632,7 @@ Manager::Impl * Manager::Impl::make(const Config &cfg)
                 agent_actions_buffer,
             },
             std::move(mwgpu_exec),
-            std::move(step_graph),
+            // std::move(step_graph),
             std::move(simulation_graph),
             std::move(reset_and_update_graph),
         };
