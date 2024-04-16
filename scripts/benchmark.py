@@ -83,6 +83,8 @@ for i in range(num_steps):
 end = time.time()
 
 duration = end - start
-print(num_worlds * num_steps / duration, duration)
+print(duration, " total runtime")
+print(num_worlds * num_steps, " total frames")
+print(num_worlds * num_steps / duration, " SPS")
 
 del sim
