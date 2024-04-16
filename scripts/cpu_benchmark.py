@@ -113,7 +113,7 @@ start = time.time()
 for i in range(num_steps):
     # sim.step()
     sim.simulate()
-    sim.resetandupdate()
+    sim.reset_and_update()
 
     if has_gpu:
         for obs_cpu, obs_gpu in zip(observations_cpu, observations_gpu):

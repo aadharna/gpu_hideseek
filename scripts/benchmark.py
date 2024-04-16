@@ -66,7 +66,7 @@ start = time.time()
 for i in range(num_steps):
     # sim.step()
     sim.simulate()
-    sim.resetandupdate()
+    sim.reset_and_update()
 
     #torch.rand(reset_rand.shape, out=reset_rand)
 
