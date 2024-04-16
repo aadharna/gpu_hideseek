@@ -3,6 +3,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import gymnasium as gym
+from gymnasium.spaces import Dict, Box, MultiDiscrete
+
 # class HideAndSeekNetwork(nn.Module):
 #     def __init__(self, obs_space, action_space, hidden_dim=256, num_heads=4, 
 #                  entity_embedding_dim=128):
@@ -232,7 +235,7 @@ def process_obs(prep_counter,
 class EntitySelfAttentionNet(nn.Module):
 
     # num_obs_features, num_entity_features, 128, num_channels, 4
-    def __init__(self, obs_features, entity_features, num_embed_channels=128, num_out_channels=256, num_heads=4):
+    def __init__(self, obs_features, entity_features, num_embed_channels=128, num_out_channels=128, num_heads=4):
         super(EntitySelfAttentionNet, self).__init__()
         self.num_embed_channels = num_embed_channels
         self.num_out_channels = num_out_channels
@@ -331,6 +334,43 @@ class EntitySelfAttentionNet(nn.Module):
         return ff_out
 
 
+class Policy(nn.Module):
+    def __init__(self, action_space, num_in_channels=128):
+        super(Policy, self).__init__()
+        self.move_action_dim = action_space.nvec[0]
+        self.move_angle_dim = action_space.nvec[1]
+        self.turn_dim = action_space.nvec[2]
+        self.grab_action_dim = action_space.nvec[3]
+        self.lock_action_dim = action_space.nvec[4]
+
+        self.action_head_move_amount = nn.Linear(num_in_channels, self.move_action_dim)
+        self.action_head_move_angle = nn.Linear(num_in_channels, self.move_angle_dim)
+        self.action_head_turn = nn.Linear(num_in_channels, self.turn_dim)
+        self.action_head_grab = nn.Linear(num_in_channels, self.grab_action_dim)
+        self.action_head_lock = nn.Linear(num_in_channels, self.lock_action_dim)
+        
+        self.value = nn.Linear(num_in_channels, 1)
+
+    def forward(self, x):
+
+        move_amount_logits = self.action_head_move_amount(x)
+        move_angle_logits = self.action_head_move_angle(x)
+        turn_logits = self.action_head_turn(x)
+        grab_logits = self.action_head_grab(x)
+        lock_logits = self.action_head_lock(x)
+
+        logits = [move_amount_logits, move_angle_logits, turn_logits, grab_logits, lock_logits]
+        multi_categorical = [torch.distributions.Categorical(logits=l) for l in logits]
+
+        action = torch.stack([c.sample() for c in multi_categorical])
+        logprob = torch.stack([c.log_prob(a) for c, a in zip(multi_categorical, action)]).T.sum(1)
+        entropy = torch.stack([c.entropy() for c in multi_categorical]).T.sum(1)
+
+        # logits = self.policy(x)
+        value = self.value(x)
+        return action.T, logprob, entropy, value
+
+
 if __name__ == '__main__':
 
     import gpu_hideseek
@@ -344,7 +384,7 @@ if __name__ == '__main__':
     import random
     random.seed(0)
 
-    from wrapper import MadronaHideAndSeekWrapper
+    from wrapper import MadronaHideAndSeekWrapper, MadronaHideAndSeekWrapperSplitTaskGraph
     import numpy as np
 
     num_worlds = 25
@@ -369,22 +409,32 @@ if __name__ == '__main__':
         )
     sim.init()
 
-    env = MadronaHideAndSeekWrapper(sim)
+    env = MadronaHideAndSeekWrapperSplitTaskGraph(sim)
     obs, _ = env.reset()
     num_obs_features = env.num_obs_features
     num_entity_features = env.num_ent_features
     # obs_tensors, num_obs_features, num_entity_features = setup_obs(sim)
 
     network = EntitySelfAttentionNet(num_obs_features, num_entity_features).to('cuda:0')
+    policy = Policy(env.action_space).to('cuda:0')
 
     x = process_obs(**obs)
     
     print(network)
+    print(policy)
 
     out = network(x)
+    actions, logprobs, entropy, value = policy(out)
+    move_amount = actions[:, 0]
+    move_angle = actions[:, 1]
+    turn = actions[:, 2]
+    grab = actions[:, 3]
+    lock = actions[:, 4]
     # move_amount, move_angle, turn, grab, lock, value
 
-    action = {'move_amount': 1, 'move_angle': 8, 'turn': 7, 'grab': 0, 'lock': 0}
+    action = {'move_amount': move_amount, 'move_angle': move_angle, 
+              'turn': turn, 'grab': grab, 'lock': lock}
     ns, rew, done, tr, i = env.step(action)
+    print(rew)
     _ = 0
 
