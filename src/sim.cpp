@@ -1137,10 +1137,25 @@ static void setupStepTasks(TaskGraphBuilder &builder, const Config &cfg)
     observationsTasks(cfg, builder, {resets});
 }
 
-void Sim::setupTasks(TaskGraphManager &taskgraph_mgr, const Config &cfg)
+static void setupSimulateTasks(TaskGraphBuilder& builder, const Config& cfg)
+{
+    auto sim_done = processActionsAndPhysicsTasks(builder, cfg);
+    auto rewards_and_dones = rewardsAndDonesTasks(builder, { sim_done });
+    // get data for observations (PRE RESET) for reward calculation!
+    observationsTasks(cfg, builder, {rewards_and_dones});
+}
+
+static void setupResetAndUpdateTasks(TaskGraphBuilder& builder, const Config& cfg)
+{
+    auto resets = resetTasks(builder, {});
+    observationsTasks(cfg, builder, {resets});
+}
+
+void Sim::setupTasks(TaskGraphManager& taskgraph_mgr, const Config& cfg)
 {
     setupInitTasks(taskgraph_mgr.init(TaskGraphID::Init), cfg);
-    setupStepTasks(taskgraph_mgr.init(TaskGraphID::Step), cfg);
+    setupSimulateTasks(taskgraph_mgr.init(TaskGraphID::Simulate), cfg);
+    setupResetAndUpdateTasks(taskgraph_mgr.init(TaskGraphID::ResetAndUpdate), cfg);
 }
 
 Sim::Sim(Engine &ctx,
